@@ -1,5 +1,7 @@
 use winit::{
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event::{
+        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
+    },
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
@@ -70,6 +72,12 @@ fn main() {
                         _ => {}
                     }
                 }
+                WindowEvent::MouseInput { state, button, .. } => {
+                    if let MouseButton::Right = button {
+                        let state = ElementState::Pressed == *state;
+                        ray_marcher.controller.looking = state;
+                    }
+                }
                 WindowEvent::Resized(physical_size) => {
                     ray_marcher.wgpu_ctx.resize((*physical_size).into());
                 }
@@ -77,8 +85,21 @@ fn main() {
                     // new_inner_size is &&mut so we have to dereference it twice
                     ray_marcher.wgpu_ctx.resize((**new_inner_size).into());
                 }
+                WindowEvent::Focused(false) => {
+                    ray_marcher.controller = raymarcher::Controller::default();
+                }
                 _ => {}
             },
+            Event::DeviceEvent {
+                event: DeviceEvent::MouseMotion { delta },
+                ..
+            } => {
+                if ray_marcher.controller.looking {
+                    let sensativity = 0.1;
+                    ray_marcher.camera.yaw += delta.0 as f32 * sensativity * dt;
+                    ray_marcher.camera.pitch += delta.1 as f32 * sensativity * dt;
+                }
+            }
             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 ray_marcher.update(dt);
                 match ray_marcher.render() {

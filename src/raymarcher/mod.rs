@@ -6,12 +6,21 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use wgpu_context::WgpuContext;
 
 pub struct Camera {
-    pos: na::Point3<f32>,
-    dir: na::Vector3<f32>,
+    pub pos: na::Point3<f32>,
+    pub fov: f32,
+    pub yaw: f32,
+    pub pitch: f32,
 }
 impl Camera {
-    fn build(&self) -> na::Matrix4<f32> {
-        na::Matrix4::face_towards(&self.pos, &(self.pos + self.dir), &na::Vector3::y())
+    fn uniform(&self, aspect: f32) -> pipeline::CameraUniform {
+        let fov = self.fov / 2.0;
+        let mat = na::Matrix4::new_translation(&self.pos.coords)
+            * self.rotation().to_homogeneous()
+            * na::Matrix4::new_nonuniform_scaling(&na::vector![aspect * fov, fov, 1.0]);
+        pipeline::CameraUniform { matrix: mat.into() }
+    }
+    fn rotation(&self) -> na::Rotation3<f32> {
+        na::Rotation3::from_euler_angles(self.pitch, self.yaw, 0.0)
     }
 }
 
@@ -23,6 +32,7 @@ pub struct Controller {
     pub up: bool,
     pub forwards: bool,
     pub backwards: bool,
+    pub looking: bool,
 }
 
 pub struct RayMarcher<W>
@@ -42,24 +52,26 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
     pub async fn new(window: W, size: (u32, u32)) -> Self {
         let wgpu_ctx = WgpuContext::new(window, size).await;
         let camera = Camera {
-            pos: na::point![0.0, 0.0, 0.0],
-            dir: na::vector![0.0, 0.0, 1.0],
+            pos: na::point![0.0, 0.0, -3.0],
+            fov: std::f32::consts::FRAC_PI_3,
+            yaw: 0.0,
+            pitch: 0.0,
         };
 
-        // let camera_bind_group_layout = pipeline::camera_bind_group_layout(&wgpu_ctx.device);
         let bind_group_layouts = pipeline::BindGroupLayouts::new(&wgpu_ctx.device);
 
+        let aspect = size.0 as f32 / size.1 as f32;
         let camera_bindgroup = pipeline::camera_bindgroup(
             &wgpu_ctx.device,
             &bind_group_layouts.camera,
-            na::Matrix4::identity().into(),
+            camera.uniform(aspect),
         );
         let sphere_bindgroup = pipeline::sphere_bindgroup(
             &wgpu_ctx.device,
             &bind_group_layouts.sphere,
             pipeline::SphereUniform {
                 pos: [0.0, 0.0, 3.0],
-                rad: 0.5,
+                rad: 1.0,
             },
         );
         let pipeline = pipeline::render_pipeline(
@@ -82,6 +94,7 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
         }
     }
     pub fn update(&mut self, dt: f32) {
+        let speed = 1.0;
         let mut dir = na::Vector3::<f32>::zeros();
         if self.controller.up {
             dir += na::Vector3::y();
@@ -103,21 +116,21 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
         }
         if dir.magnitude_squared() != 0.0 {
             dir = dir.normalize();
-            self.camera.pos += dir * dt;
+            dir = self
+                .camera
+                .rotation()
+                .to_homogeneous()
+                .transform_vector(&dir);
+            self.camera.pos += dir * speed * dt;
         }
     }
     fn aspect(&self) -> f32 {
-        // self.wgpu_ctx.config.width as f32 / self.wgpu_ctx.config.height as f32
-        self.wgpu_ctx.config.height as f32 / self.wgpu_ctx.config.width as f32
-    }
-    fn camera_mat(&self) -> na::Matrix4<f32> {
-        self.camera
-            .build()
-            .append_nonuniform_scaling(&na::vector![1.0, self.aspect(), 1.0])
+        self.wgpu_ctx.config.width as f32 / self.wgpu_ctx.config.height as f32
+        // self.wgpu_ctx.config.height as f32 / self.wgpu_ctx.config.width as f32
     }
     fn update_graphics(&self) {
         self.camera_bindgroup
-            .update(&self.wgpu_ctx.queue, self.camera_mat().into());
+            .update(&self.wgpu_ctx.queue, self.camera.uniform(self.aspect()));
     }
     pub fn render(&self) -> Result<(), wgpu::SurfaceError> {
         self.update_graphics();

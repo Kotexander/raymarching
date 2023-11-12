@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 
-use nalgebra as na;
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -85,25 +84,7 @@ pub fn new_fullscreen_quad(device: &wgpu::Device) -> Mesh<Vertex> {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
-    pub x: [f32; 4],
-    pub y: [f32; 4],
-    pub z: [f32; 4],
-    pub w: [f32; 4],
-}
-impl From<[[f32; 4]; 4]> for CameraUniform {
-    fn from(value: [[f32; 4]; 4]) -> Self {
-        Self {
-            x: value[0],
-            y: value[1],
-            z: value[2],
-            w: value[3],
-        }
-    }
-}
-impl From<na::Matrix4<f32>> for CameraUniform {
-    fn from(value: na::Matrix4<f32>) -> Self {
-        Self::from(Into::<[[f32; 4]; 4]>::into(value))
-    }
+    pub matrix: [[f32; 4]; 4],
 }
 
 pub fn camera_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
