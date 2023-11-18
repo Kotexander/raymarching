@@ -73,7 +73,7 @@ fn main() {
                     }
                 }
                 WindowEvent::MouseInput { state, button, .. } => {
-                    if let MouseButton::Right = button {
+                    if let MouseButton::Left = button {
                         let state = ElementState::Pressed == *state;
                         ray_marcher.controller.looking = state;
                     }

@@ -127,61 +127,13 @@ pub fn camera_bindgroup(
     }
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct SphereUniform {
-    pub pos: [f32; 3],
-    pub rad: f32,
-}
-pub fn sphere_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }],
-        label: Some("Sphere Bind Group Layout"),
-    })
-}
-pub fn sphere_bindgroup(
-    device: &wgpu::Device,
-    sphere_bind_group_layout: &wgpu::BindGroupLayout,
-    sphere_uniform: SphereUniform,
-) -> BindGroup<SphereUniform> {
-    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Sphere Buffer"),
-        contents: bytemuck::cast_slice(&[sphere_uniform]),
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-    });
-    let bindgroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: sphere_bind_group_layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: buffer.as_entire_binding(),
-        }],
-        label: Some("SPhere Bind Group"),
-    });
-    BindGroup {
-        bindgroup,
-        buffer,
-        phantom: PhantomData,
-    }
-}
-
 pub struct BindGroupLayouts {
     pub camera: wgpu::BindGroupLayout,
-    pub sphere: wgpu::BindGroupLayout,
 }
 impl BindGroupLayouts {
     pub fn new(device: &wgpu::Device) -> Self {
         Self {
             camera: camera_bindgroup_layout(device),
-            sphere: sphere_bindgroup_layout(device),
         }
     }
 }
@@ -193,7 +145,7 @@ pub fn render_pipeline(
 ) -> wgpu::RenderPipeline {
     let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &[&bind_group_layout.camera, &bind_group_layout.sphere],
+        bind_group_layouts: &[&bind_group_layout.camera],
         push_constant_ranges: &[],
     });
 

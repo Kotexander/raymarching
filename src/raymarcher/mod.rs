@@ -42,7 +42,6 @@ where
     pub wgpu_ctx: WgpuContext<W>,
     pub camera: Camera,
     camera_bindgroup: pipeline::BindGroup<pipeline::CameraUniform>,
-    sphere_bindgroup: pipeline::BindGroup<pipeline::SphereUniform>,
     pipeline: wgpu::RenderPipeline,
     mesh: pipeline::Mesh<pipeline::Vertex>,
 
@@ -66,14 +65,6 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
             &bind_group_layouts.camera,
             camera.uniform(aspect),
         );
-        let sphere_bindgroup = pipeline::sphere_bindgroup(
-            &wgpu_ctx.device,
-            &bind_group_layouts.sphere,
-            pipeline::SphereUniform {
-                pos: [0.0, 0.0, 3.0],
-                rad: 1.0,
-            },
-        );
         let pipeline = pipeline::render_pipeline(
             &wgpu_ctx.device,
             wgpu_ctx.config.format,
@@ -87,7 +78,6 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
             wgpu_ctx,
             camera,
             camera_bindgroup,
-            sphere_bindgroup,
             pipeline,
             mesh,
             controller,
@@ -175,7 +165,6 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
 
             render_pass.set_pipeline(&self.pipeline);
             render_pass.set_bind_group(0, &self.camera_bindgroup.bindgroup, &[]);
-            render_pass.set_bind_group(1, &self.sphere_bindgroup.bindgroup, &[]);
             self.mesh.draw(&mut render_pass);
         }
         // submit will accept anything that implements IntoIter
