@@ -33,7 +33,7 @@ fn cross_distance(p: vec3<f32>) -> f32 {
     return min(da,min(db,dc));
 }
 
-const MENGER_SPONGE_ITERATIONS = 5;
+const MENGER_SPONGE_ITERATIONS = 3;
 fn menger_sponge(p: vec3<f32>) -> f32 {
     var d = box_distance(p,vec3(1.0));
     var s = 1.0;
@@ -49,16 +49,16 @@ fn menger_sponge(p: vec3<f32>) -> f32 {
 }
 
 // mandelbrot bulb
-// const MAX_STEPS = 100;
-// const EPSILON = 0.001;
+const MAX_STEPS = 100;
+const EPSILON = 0.001;
 
 // everything else
-const MAX_STEPS = 500;
-const EPSILON = 0.00001;
+// const MAX_STEPS = 500;
+// const EPSILON = 0.00001;
 
 const MAX_DIST = 10.0;
 
-const ITERATIONS = 15;
+const ITERATIONS = 50;
 const POWER = 8.0;
 fn mandelbulb(pos: vec3<f32>) -> f32 {
 	var z = pos;
@@ -93,7 +93,7 @@ fn de(p: vec3<f32>) -> f32 {
     // return box_distance(p);
     // return cross_distance(p;
     // return mandelbulb(p);
-    return menger_sponge(p);
+     return menger_sponge(p);
 
 }
 fn calc_normal(p: vec3<f32>, d: f32) -> vec3<f32> {

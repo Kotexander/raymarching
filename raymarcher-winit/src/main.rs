@@ -6,7 +6,6 @@ use winit::{
     window::WindowBuilder,
 };
 
-mod raymarcher;
 use raymarcher::RayMarcher;
 
 const Q: u32 = 16;
