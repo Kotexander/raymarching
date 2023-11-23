@@ -19,7 +19,7 @@ impl Camera {
             * na::Matrix4::new_nonuniform_scaling(&na::vector![aspect * fov, fov, 1.0]);
         pipeline::CameraUniform { matrix: mat.into() }
     }
-    fn rotation(&self) -> na::Rotation3<f32> {
+    pub fn rotation(&self) -> na::Rotation3<f32> {
         na::Rotation3::from_euler_angles(self.pitch, self.yaw, 0.0)
     }
 }

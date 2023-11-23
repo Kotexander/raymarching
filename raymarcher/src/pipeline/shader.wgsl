@@ -92,8 +92,8 @@ fn de(p: vec3<f32>) -> f32 {
     // return tetrahedron_distance(p);
     // return box_distance(p);
     // return cross_distance(p;
-    // return mandelbulb(p);
-     return menger_sponge(p);
+     return mandelbulb(p);
+     //return menger_sponge(p);
 
 }
 fn calc_normal(p: vec3<f32>, d: f32) -> vec3<f32> {
@@ -127,7 +127,7 @@ fn shadow(pos: vec3<f32>, dir: vec3<f32>) -> bool {
 }
 
 fn run(pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
-    let light_dir = normalize(vec3<f32>(1.5, 1.0, 1.0));
+    let light_dir = normalize(vec3<f32>(1.5, 1.0, -1.0));
 
     var depth = 0.0;
     var normal: vec3<f32>;

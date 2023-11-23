@@ -9,6 +9,7 @@ use raw_window_handle::{
 };
 
 mod sensor;
+use raymarcher::RayMarcher;
 use sensor::*;
 
 pub struct AndroidWindow(ndk::native_window::NativeWindow);
@@ -28,7 +29,120 @@ unsafe impl HasRawWindowHandle for AndroidWindow {
     }
 }
 
-const SCALE: u32 = 2;
+struct Pointer {
+    id: i32,
+    pre: raymarcher::na::Point2<f32>,
+    now: raymarcher::na::Point2<f32>,
+}
+impl Pointer {
+    fn new(id: i32, pos: raymarcher::na::Point2<f32>) -> Self {
+        Self {
+            id,
+            pre: pos,
+            now: pos,
+        }
+    }
+    fn update(&mut self) {
+        self.pre = self.now;
+    }
+}
+
+const SCALE: u32 = 4;
+const GYRO_PERIOD: f32 = 1.0 / 60.0;
+
+struct App {
+    ray_marcher: Option<RayMarcher<AndroidWindow>>,
+    pointer: Option<Pointer>,
+    num_pointers: usize,
+}
+impl App {
+    fn new() -> Self {
+        Self {
+            ray_marcher: None,
+            pointer: None,
+            num_pointers: 0,
+        }
+    }
+    fn init_window(&mut self, native_window: ndk::native_window::NativeWindow) {
+        let size = (
+            native_window.width() as u32 / SCALE,
+            native_window.height() as u32 / SCALE,
+        );
+        let ray_marcher = pollster::block_on(raymarcher::RayMarcher::new(
+            AndroidWindow(native_window),
+            size,
+        ));
+        self.ray_marcher = Some(ray_marcher);
+    }
+    fn window_exists(&self) -> bool {
+        self.ray_marcher.is_some()
+    }
+    fn resize(&mut self) {
+        if let Some(rm) = &mut self.ray_marcher {
+            let w = rm.wgpu_ctx.window.0.width() as u32 / SCALE;
+            let h = rm.wgpu_ctx.window.0.height() as u32 / SCALE;
+            rm.wgpu_ctx.resize((w, h));
+        } else {
+            log::error!("Attempted window resize when no window exists!");
+        }
+    }
+    fn gyro(&mut self, gyro: [f32; 3]) {
+        if let Some(rm) = &mut self.ray_marcher {
+            if self.pointer.is_none() {
+                rm.camera.pitch -= gyro[0] * GYRO_PERIOD;
+                rm.camera.yaw -= gyro[1] * GYRO_PERIOD;
+            }
+        } else {
+            log::error!("Attempted gyro action when no window exists!");
+        }
+    }
+    fn update(&mut self, dt: f32) {
+        if let Some(rm) = &mut self.ray_marcher {
+            if let Some(pointer) = &mut self.pointer {
+                let sensativity = 0.001;
+                let d = (pointer.pre - pointer.now) * sensativity;
+                rm.camera.pitch += d.y;
+                rm.camera.yaw += d.x;
+                pointer.update();
+            } else {
+                if self.num_pointers == 2 || self.num_pointers == 3 {
+                    let speed = 0.5;
+                    let v = rm
+                        .camera
+                        .rotation()
+                        .to_homogeneous()
+                        .transform_vector(&raymarcher::na::Vector3::z_axis());
+                    let d = v * speed * dt;
+                    if self.num_pointers == 2 {
+                        rm.camera.pos += d;
+                    }
+                    if self.num_pointers == 3 {
+                        rm.camera.pos -= d;
+                    }
+                }
+            }
+
+            rm.update(dt);
+        } else {
+            log::error!("Attempted unpdate when to window exists!");
+        }
+    }
+    fn render(&self) {
+        if let Some(rm) = &self.ray_marcher {
+            match rm.render() {
+                Ok(_) => {}
+                // Reconfigure the surface if lost
+                Err(wgpu::SurfaceError::Lost) => rm.wgpu_ctx.reconfigure_surface(),
+                // The system is out of memory, we should probably quit
+                // Err(wgpu::SurfaceError::OutOfMemory) => quit = true,
+                // All other errors (Outdated, Timeout) should be resolved by the next frame
+                Err(e) => log::error!("{:?}", e),
+            }
+        } else {
+            log::error!("Attempted rendering when no window exists!");
+        }
+    }
+}
 
 #[no_mangle]
 fn android_main(app: AndroidApp) {
@@ -37,11 +151,9 @@ fn android_main(app: AndroidApp) {
     );
 
     let mut quit = false;
-    let mut ray_marcher = None;
     let mut combining_accent = None;
 
-    let mut touches_down = 0;
-    let mut last_gyro = [0f32; 3];
+    let mut rm_app = App::new();
 
     // info!("Sensor list:");
     // for sensor in sensor_manager.sensor_list() {
@@ -63,12 +175,11 @@ fn android_main(app: AndroidApp) {
     sensor_event_queue.enable_sensor(&default_gyro);
     sensor_event_queue.set_event_rate(
         &default_gyro,
-        std::time::Duration::from_micros(1000 / 60 * 1000),
+        std::time::Duration::from_secs_f32(GYRO_PERIOD),
     );
     let mut timer = std::time::Instant::now();
     let mut dt = 0.0;
     while !quit {
-        // info!("min delay: {} us", default_gyro.min_delay().as_micros());
         app.poll_events(Some(std::time::Duration::ZERO), |event| {
             match event {
                 PollEvent::Wake => {}
@@ -87,32 +198,15 @@ fn android_main(app: AndroidApp) {
                         // }
                         // }
                         MainEvent::InitWindow { .. } => {
-                            let native_window = app.native_window();
-                            if let Some(native_window) = native_window {
-                                let size = (
-                                    native_window.width() as u32 / SCALE,
-                                    native_window.height() as u32 / SCALE,
-                                );
-                                ray_marcher = Some(pollster::block_on(
-                                    raymarcher::RayMarcher::new(AndroidWindow(native_window), size),
-                                ));
-                                if let Some(ray_marcher) = &mut ray_marcher {
-                                    ray_marcher.camera.pos =
-                                        raymarcher::na::Point3::new(0.0, 0.0, 3.0);
-                                    ray_marcher.camera.yaw = std::f32::consts::PI;
-                                }
+                            if let Some(native_window) = app.native_window() {
+                                rm_app.init_window(native_window);
                             }
                         }
                         MainEvent::TerminateWindow { .. } => {
-                            ray_marcher = None;
-                            touches_down = 0;
+                            rm_app.ray_marcher = None;
                         }
                         MainEvent::WindowResized { .. } => {
-                            if let Some(ray_marcher) = &mut ray_marcher {
-                                let w = ray_marcher.wgpu_ctx.window.0.width() as u32 / SCALE;
-                                let h = ray_marcher.wgpu_ctx.window.0.height() as u32 / SCALE;
-                                ray_marcher.wgpu_ctx.resize((w, h));
-                            }
+                            rm_app.resize();
                         }
                         MainEvent::RedrawNeeded { .. } => {}
                         MainEvent::InputAvailable { .. } => {}
@@ -143,38 +237,52 @@ fn android_main(app: AndroidApp) {
                             );
                             info!("KeyEvent: combined key: {combined_key_char:?}");
                         }
-                        InputEvent::MotionEvent(motion_event) => match motion_event.action() {
-                            MotionAction::Up => {
-                                let pointer = motion_event.pointer_index();
-                                let pointer = motion_event.pointer_at_index(pointer);
-                                let x = pointer.x();
-                                let y = pointer.y();
+                        InputEvent::MotionEvent(motion_event) => {
+                            rm_app.num_pointers = motion_event.pointer_count();
+                            let action = motion_event.action();
 
-                                if x < 200.0 && y < 200.0 {
-                                    info!("Requesting to show keyboard");
-                                    app.show_soft_input(true);
+                            match action {
+                                MotionAction::Up
+                                | MotionAction::PointerUp
+                                | MotionAction::Cancel => rm_app.pointer = None,
+                                _ => {
+                                    if rm_app.num_pointers == 1 {
+                                        let p = motion_event.pointer_at_index(0);
+                                        let pos = raymarcher::na::Point2::new(p.x(), p.y());
+                                        match action {
+                                            MotionAction::Down | MotionAction::PointerDown => {
+                                                rm_app.pointer =
+                                                    Some(Pointer::new(p.pointer_id(), pos));
+                                            }
+                                            MotionAction::Move => {
+                                                if let Some(pointer) = &mut rm_app.pointer {
+                                                    if pointer.id == p.pointer_id() {
+                                                        pointer.now = pos;
+                                                    } else {
+                                                        *pointer =
+                                                            Pointer::new(p.pointer_id(), pos);
+                                                    }
+                                                } else {
+                                                    rm_app.pointer =
+                                                        Some(Pointer::new(p.pointer_id(), pos));
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    } else {
+                                        rm_app.pointer = None;
+                                    }
                                 }
-
-                                touches_down -= 1;
                             }
-                            MotionAction::Down => {
-                                touches_down += 1;
-                            }
-                            MotionAction::Cancel => {
-                                touches_down = 0;
-                            }
-                            _ => {}
-                        },
+                        }
                         InputEvent::TextEvent(state) => {
                             info!("Input Method State: {state:?}");
                         }
                         _ => {}
                     }
 
-                    // info!("Input Event: {event:?}");
                     InputStatus::Unhandled
                 }) {
-                    // info!("No more input available");
                     break;
                 }
             },
@@ -184,35 +292,16 @@ fn android_main(app: AndroidApp) {
         }
 
         while let Some(event) = sensor_event_queue.get_event() {
-            // info!("HAS EVENTS GYRO: {:?}", event.gyro());
-            last_gyro = event.gyro();
-        }
-
-        if let Some(ray_marcher) = &mut ray_marcher {
-            // info!("Rendering...");
-
-            if touches_down <= 0 {
-                ray_marcher.camera.pitch -= last_gyro[0] * dt;
-                ray_marcher.camera.yaw -= last_gyro[1] * dt;
-                ray_marcher.camera.pitch = ray_marcher
-                    .camera
-                    .pitch
-                    .clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
-            }
-
-            ray_marcher.update(dt);
-            match ray_marcher.render() {
-                Ok(_) => {
-                    // info!("Done Rendering");
-                }
-                // Reconfigure the surface if lost
-                Err(wgpu::SurfaceError::Lost) => ray_marcher.wgpu_ctx.reconfigure_surface(),
-                // The system is out of memory, we should probably quit
-                Err(wgpu::SurfaceError::OutOfMemory) => quit = true,
-                // All other errors (Outdated, Timeout) should be resolved by the next frame
-                Err(e) => log::error!("{:?}", e),
+            if rm_app.window_exists() {
+                let gyro = event.gyro();
+                rm_app.gyro(gyro);
             }
         }
+        if rm_app.window_exists() {
+            rm_app.update(dt);
+            rm_app.render();
+        }
+
         dt = timer.elapsed().as_secs_f32();
         timer = std::time::Instant::now();
     }
