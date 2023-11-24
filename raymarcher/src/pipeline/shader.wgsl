@@ -92,8 +92,8 @@ fn de(p: vec3<f32>) -> f32 {
     // return tetrahedron_distance(p);
     // return box_distance(p);
     // return cross_distance(p;
-     return mandelbulb(p);
-     //return menger_sponge(p);
+    return mandelbulb(p);
+    //return menger_sponge(p);
 
 }
 fn calc_normal(p: vec3<f32>, d: f32) -> vec3<f32> {

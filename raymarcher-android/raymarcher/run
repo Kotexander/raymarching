@@ -1,0 +1,16 @@
+#!/usr/bin/env fish
+set PACKAGE_NAME kotexander.raymarcher
+
+cd .. && ./gradlew installDebug
+if test $status -eq 0
+    adb shell am start -n "$PACKAGE_NAME/$PACKAGE_NAME.MainActivity" -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --splashscreen-show-icon
+    if test $status -eq 0
+        while not test $PID
+            set PID (adb shell pidof $PACKAGE_NAME)
+        end
+
+        adb logcat --pid=$PID -v brief -v color
+    else
+        echo "Could not start $PACKAGE_NAME"
+    end
+end

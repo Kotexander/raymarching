@@ -6,11 +6,11 @@ plugins {
 
 android {
     namespace = "kotexander.raymarcher"
-    compileSdk = 34
+    compileSdk = 33
 
     defaultConfig {
         applicationId = "kotexander.raymarcher"
-        minSdk = 29
+        minSdk = 30
         targetSdk = 33
         versionCode = 1
         versionName = "1.0"
@@ -34,21 +34,12 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
-    buildFeatures {
-        prefab = true
-    }
-//    externalNativeBuild {
-//        cmake {
-//            path = file("src/main/cpp/CMakeLists.txt")
-//            version = "3.22.1"
-//        }
-//    }
 }
 
 cargo {
     module  = "../raymarcher"       // Or whatever directory contains your Cargo.toml
-    libname = "raymarcherandroid"          // Or whatever matches Cargo.toml's [package] name.
-    targets = listOf("arm")  // See bellow for a longer list of options
+    libname = "raymarcherandroid"   // Or whatever matches Cargo.toml's [package] name.
+    targets = listOf("arm")         // See bellow for a longer list of options
 }
 project.afterEvaluate {
     tasks.withType(com.nishtahir.CargoBuildTask::class)
@@ -64,9 +55,10 @@ project.afterEvaluate {
 }
 
 dependencies {
+
     implementation("androidx.core:core-ktx:1.9.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.google.android.material:material:1.10.0")
+    implementation("com.google.android.material:material:1.9.0")
     implementation("androidx.games:games-activity:2.0.2")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

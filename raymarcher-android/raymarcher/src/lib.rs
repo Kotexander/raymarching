@@ -244,7 +244,10 @@ fn android_main(app: AndroidApp) {
                             match action {
                                 MotionAction::Up
                                 | MotionAction::PointerUp
-                                | MotionAction::Cancel => rm_app.pointer = None,
+                                | MotionAction::Cancel => {
+                                    rm_app.pointer = None;
+                                    rm_app.num_pointers -= 1;
+                                }
                                 _ => {
                                     if rm_app.num_pointers == 1 {
                                         let p = motion_event.pointer_at_index(0);
