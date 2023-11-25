@@ -47,7 +47,6 @@ impl Pointer {
     }
 }
 
-const SCALE: u32 = 4;
 const GYRO_PERIOD: f32 = 1.0 / 60.0;
 
 struct App {
@@ -64,13 +63,11 @@ impl App {
         }
     }
     fn init_window(&mut self, native_window: ndk::native_window::NativeWindow) {
-        let size = (
-            native_window.width() as u32 / SCALE,
-            native_window.height() as u32 / SCALE,
-        );
+        let size = (native_window.width() as u32, native_window.height() as u32);
         let ray_marcher = pollster::block_on(raymarcher::RayMarcher::new(
             AndroidWindow(native_window),
             size,
+            1.0 / 4.0,
         ));
         self.ray_marcher = Some(ray_marcher);
     }
@@ -79,8 +76,8 @@ impl App {
     }
     fn resize(&mut self) {
         if let Some(rm) = &mut self.ray_marcher {
-            let w = rm.wgpu_ctx.window.0.width() as u32 / SCALE;
-            let h = rm.wgpu_ctx.window.0.height() as u32 / SCALE;
+            let w = rm.wgpu_ctx.window.0.width() as u32;
+            let h = rm.wgpu_ctx.window.0.height() as u32;
             rm.wgpu_ctx.resize((w, h));
         } else {
             log::error!("Attempted window resize when no window exists!");

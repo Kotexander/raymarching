@@ -28,7 +28,7 @@ fn main() {
         .unwrap();
 
     let size = window.inner_size();
-    let mut ray_marcher = pollster::block_on(RayMarcher::new(window, size.into()));
+    let mut ray_marcher = pollster::block_on(RayMarcher::new(window, size.into(), 1.0 / 4.0));
 
     event_loop.run(move |event, _, control_flow| {
         let window = &ray_marcher.wgpu_ctx.window;
@@ -78,11 +78,11 @@ fn main() {
                     }
                 }
                 WindowEvent::Resized(physical_size) => {
-                    ray_marcher.wgpu_ctx.resize((*physical_size).into());
+                    ray_marcher.resize((*physical_size).into());
                 }
                 WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                     // new_inner_size is &&mut so we have to dereference it twice
-                    ray_marcher.wgpu_ctx.resize((**new_inner_size).into());
+                    ray_marcher.resize((**new_inner_size).into())
                 }
                 WindowEvent::Focused(false) => {
                     ray_marcher.controller = raymarcher::Controller::default();

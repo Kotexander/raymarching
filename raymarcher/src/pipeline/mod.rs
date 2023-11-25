@@ -104,7 +104,7 @@ pub fn camera_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
 }
 pub fn camera_bindgroup(
     device: &wgpu::Device,
-    camera_bind_group_layout: &wgpu::BindGroupLayout,
+    camera_bindgroup_layout: &wgpu::BindGroupLayout,
     camera_uniform: CameraUniform,
 ) -> BindGroup<CameraUniform> {
     let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -113,7 +113,7 @@ pub fn camera_bindgroup(
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
     let bindgroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: camera_bind_group_layout,
+        layout: camera_bindgroup_layout,
         entries: &[wgpu::BindGroupEntry {
             binding: 0,
             resource: buffer.as_entire_binding(),
@@ -127,32 +127,115 @@ pub fn camera_bindgroup(
     }
 }
 
-pub struct BindGroupLayouts {
-    pub camera: wgpu::BindGroupLayout,
+pub fn texture_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+        label: Some("Texture Bind Group Layout"),
+    })
 }
-impl BindGroupLayouts {
-    pub fn new(device: &wgpu::Device) -> Self {
-        Self {
-            camera: camera_bindgroup_layout(device),
-        }
-    }
+pub fn texture_bindgroup(
+    device: &wgpu::Device,
+    texture_bindgroup_layout: &wgpu::BindGroupLayout,
+    view: &wgpu::TextureView,
+    sampler: &wgpu::Sampler,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: texture_bindgroup_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+        label: Some("Raymarcher Bind Group"),
+    })
 }
 
-pub fn render_pipeline(
+pub fn raymarcher_pipeline(
     device: &wgpu::Device,
     format: wgpu::TextureFormat,
-    bind_group_layout: &BindGroupLayouts,
+    camera_bindgroup_layout: &wgpu::BindGroupLayout,
 ) -> wgpu::RenderPipeline {
     let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &[&bind_group_layout.camera],
+        label: Some("Raymarcher Pipeline Layout"),
+        bind_group_layouts: &[camera_bindgroup_layout],
         push_constant_ranges: &[],
     });
 
-    let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+    let shader = device.create_shader_module(wgpu::include_wgsl!("raymarcher.wgsl"));
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
+        label: Some("Raymarcher Pipeline"),
+        layout: Some(&render_pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: "vs_main",
+            buffers: &[Vertex::desc()],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: "fs_main",
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Cw,
+            cull_mode: Some(wgpu::Face::Back),
+            polygon_mode: wgpu::PolygonMode::Fill,
+            unclipped_depth: false,
+            conservative: false,
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview: None,
+    })
+}
+
+pub fn fullscreen_pipeline(
+    device: &wgpu::Device,
+    format: wgpu::TextureFormat,
+    texture_bindgroup_layout: &wgpu::BindGroupLayout,
+) -> wgpu::RenderPipeline {
+    let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Fullscreen Pipeline Layout"),
+        bind_group_layouts: &[texture_bindgroup_layout],
+        push_constant_ranges: &[],
+    });
+
+    let shader = device.create_shader_module(wgpu::include_wgsl!("fullscreen.wgsl"));
+
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Fullscreen Pipeline"),
         layout: Some(&render_pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
