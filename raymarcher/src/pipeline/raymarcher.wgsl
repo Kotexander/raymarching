@@ -1,7 +1,15 @@
-const PI: f32 = 3.14159265358979323846264338327950288;
-
 @group(0) @binding(0)
 var<uniform> camera: mat4x4<f32>;
+
+const PI: f32 = 3.14159265358979323846264338327950288;
+
+
+const MAX_STEPS = 100;
+// const EPSILON = 0.001;
+
+// const MAX_STEPS = 500;
+const EPSILON = 0.00001;
+const MAX_DIST = 10.0;
 
 fn distributionGGX(a: f32, n: vec3<f32>, h: vec3<f32>) -> f32 {
     let a2 = a * a;
@@ -11,13 +19,13 @@ fn distributionGGX(a: f32, n: vec3<f32>, h: vec3<f32>) -> f32 {
     let num = a2;
     var den = ndoth2 * (a2 - 1.0) + 1.0;
     den = PI * den * den;
-    return num / den;
+    return num / max(den, EPSILON);
 }
 fn geometrySchlickGGX(ndotv: f32, k: f32) -> f32 {
     let num = ndotv;
     let den = ndotv * (1.0 - k) + k;
 	
-    return num / den;
+    return num / max(den, EPSILON);
 }
 fn geometrySmith(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, k: f32) -> f32 {
     let ndotv = max(dot(n, v), 0.0);
@@ -44,6 +52,34 @@ fn real_mod_vec3f32(dividend: vec3<f32>, divisor: f32) -> vec3<f32> {
     );
 }
 
+fn rotateX(a: f32) -> mat3x3<f32>{
+    let s = sin(a);
+    let c = cos(a);
+    return mat3x3(
+        vec3<f32>(1.0, 0.0, 0.0),
+        vec3<f32>(0.0,   c,  -s),
+        vec3<f32>(0.0,   s,   c),
+    );
+}
+fn rotateZ(a: f32) -> mat3x3<f32>{
+    let s = sin(a);
+    let c = cos(a);
+    return mat3x3(
+        vec3<f32>(  c,  -s, 0.0),
+        vec3<f32>(  s,   c, 0.0),
+        vec3<f32>(0.0, 0.0, 1.0),
+    );
+}
+fn rotateY(a: f32) -> mat3x3<f32>{
+    let s = sin(a);
+    let c = cos(a);
+    return mat3x3(
+        vec3<f32>(  c, 0.0,   s),
+        vec3<f32>(0.0, 1.0, 0.0),
+        vec3<f32>( -s, 0.0,   c),
+    );
+}
+
 fn sphere_distance(pos: vec3<f32>) -> f32 {
     return length(pos) - 1.0;
 }
@@ -65,30 +101,28 @@ fn cross_distance(p: vec3<f32>) -> f32 {
 
 const MENGER_SPONGE_ITERATIONS = 5;
 fn menger_sponge(p: vec3<f32>) -> f32 {
+    let a = PI/f32(MENGER_SPONGE_ITERATIONS);
+    let rx = rotateX(a);
+    let ry = rotateZ(a);
+    let rz = rotateY(a);
+    var pr = p;
+
     var d = box_distance(p,vec3(1.0));
     var s = 1.0;
     for(var m = 0; m < MENGER_SPONGE_ITERATIONS; m++){
-        let a = real_mod_vec3f32(p * s, 2.0) - 1.0;
+        let a = real_mod_vec3f32(pr * s, 2.0) - 1.0;
         s *= 3.0;
         let r = 1.0 - 3.0*abs(a);
 
         let c = cross_distance(r)/s;
         d = max(d,c);
+
+        pr = pr*rx*ry*rz;
     }
     return d;
 }
 
-// mandelbrot bulb
-const MAX_STEPS = 100;
-const EPSILON = 0.001;
-
-// everything else
-// const MAX_STEPS = 500;
-// const EPSILON = 0.00001;
-
-const MAX_DIST = 10.0;
-
-const ITERATIONS = 50;
+const ITERATIONS = 10;
 const POWER = 8.0;
 fn mandelbulb(pos: vec3<f32>) -> f32 {
 	var z = pos;
@@ -124,8 +158,8 @@ fn de(p: vec3<f32>) -> f32 {
     // return cross_distance(p;
     // return mandelbulb(p);
     return menger_sponge(p);
-
 }
+
 fn calc_normal(p: vec3<f32>, d: f32) -> vec3<f32> {
     let x  = de(p);
     let dx = de(p + vec3<f32>(d, 0.0, 0.0)) - x;
@@ -188,13 +222,16 @@ fn run(pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
     let v = -dir;
     let h = normalize(l + v);
 
+    var f = fresnelSchlick(dot(v, h), vec3<f32>(0.04));
     var light = 0.0;
     let in_shadow = shadow(p + n * EPSILON, l);
     if !in_shadow {
         light = dot(l, n) * 2.0;
     }
+    else {
+        f = vec3<f32>(0.0);
+    }
 
-    let f = fresnelSchlick(dot(v, h), vec3<f32>(0.04));
     // let f = fresnelSchlick(dot(v, n), vec3<f32>(0.04));
     
     let ks = f;
@@ -209,10 +246,11 @@ fn run(pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
     let den = 4.0 * dot(v, n) * dot(l, n);
 
     let diffuse = kd * color;
-    let specular = num/den;
+    let specular = num/max(den, EPSILON);
 
-    return diffuse * max(light, 0.1) + specular * light;
+    return (diffuse + specular) * max(light, 0.1);
     // return vec3<f32>(f);
+    // return diffuse;
 }
 
 struct VertexIn {
