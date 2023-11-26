@@ -28,7 +28,7 @@ fn main() {
         .unwrap();
 
     let size = window.inner_size();
-    let mut ray_marcher = pollster::block_on(RayMarcher::new(window, size.into(), 1.0 / 4.0));
+    let mut ray_marcher = pollster::block_on(RayMarcher::new(window, size.into(), 1.0 / 1.0));
 
     event_loop.run(move |event, _, control_flow| {
         let window = &ray_marcher.wgpu_ctx.window;

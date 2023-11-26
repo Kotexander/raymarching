@@ -50,10 +50,17 @@ where
 
         let surface_caps = surface.get_capabilities(&adapter);
         log::info!("Surface capabilities: {:#?}", surface_caps);
-
+        let format = surface_caps
+            .formats
+            .iter()
+            .find(|format| !format.is_srgb())
+            .unwrap_or_else(|| {
+                log::error!("Could not find a non srgb format. Colors will be too bright!");
+                &surface_caps.formats[0]
+            });
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_caps.formats[0],
+            format: *format,
             width: size.0,
             height: size.1,
             // present_mode: surface_caps.present_modes[0],

@@ -1,7 +1,35 @@
-// const PI: f32 = 3.14159265358979323846264338327950288;
+const PI: f32 = 3.14159265358979323846264338327950288;
 
 @group(0) @binding(0)
 var<uniform> camera: mat4x4<f32>;
+
+fn distributionGGX(a: f32, n: vec3<f32>, h: vec3<f32>) -> f32 {
+    let a2 = a * a;
+    let ndoth = max(dot(n, h), 0.0);
+    let ndoth2 = ndoth * ndoth;
+
+    let num = a2;
+    var den = ndoth2 * (a2 - 1.0) + 1.0;
+    den = PI * den * den;
+    return num / den;
+}
+fn geometrySchlickGGX(ndotv: f32, k: f32) -> f32 {
+    let num = ndotv;
+    let den = ndotv * (1.0 - k) + k;
+	
+    return num / den;
+}
+fn geometrySmith(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, k: f32) -> f32 {
+    let ndotv = max(dot(n, v), 0.0);
+    let ndotl = max(dot(n, l), 0.0);
+    let ggx1 = geometrySchlickGGX(ndotv, k);
+    let ggx2 = geometrySchlickGGX(ndotl, k);
+	
+    return ggx1 * ggx2;
+}
+fn fresnelSchlick(cosTheta: f32, f0: vec3<f32>) -> vec3<f32> {
+    return f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
+}
 
 fn real_mod_f32(dividend: f32, divisor: f32) -> f32 {
     let q = floor(dividend / divisor);
@@ -35,7 +63,7 @@ fn cross_distance(p: vec3<f32>) -> f32 {
     return min(da, min(db,dc));
 }
 
-const MENGER_SPONGE_ITERATIONS = 3;
+const MENGER_SPONGE_ITERATIONS = 5;
 fn menger_sponge(p: vec3<f32>) -> f32 {
     var d = box_distance(p,vec3(1.0));
     var s = 1.0;
@@ -51,12 +79,12 @@ fn menger_sponge(p: vec3<f32>) -> f32 {
 }
 
 // mandelbrot bulb
-// const MAX_STEPS = 100;
-// const EPSILON = 0.001;
+const MAX_STEPS = 100;
+const EPSILON = 0.001;
 
 // everything else
-const MAX_STEPS = 500;
-const EPSILON = 0.00001;
+// const MAX_STEPS = 500;
+// const EPSILON = 0.00001;
 
 const MAX_DIST = 10.0;
 
@@ -125,62 +153,66 @@ fn shadow(pos: vec3<f32>, dir: vec3<f32>) -> bool {
         }
     }
     // skybox?
-    return false;
+    return true;
 }
 
 fn run(pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
-    let light_dir = normalize(vec3<f32>(1.5, 1.0, -1.0));
+    let l = normalize(vec3<f32>(3.0, 3.0, -3.0));
 
     var depth = 0.0;
-    var normal: vec3<f32>;
-    var in_shadow = false;
-
     var i = 0;
+
+    var p: vec3<f32>;
     for (; i < MAX_STEPS; i++) {
-        let p = pos + dir * depth;
+        p = pos + dir * depth;
         let dist = de(p);
         
         if dist < EPSILON {
             // hit
-            normal = calc_normal(p, EPSILON);
-            in_shadow = shadow(p + normal * EPSILON, light_dir);
             break;
         }
         depth += dist;
         
         // background color
         if depth >= MAX_DIST {
-            // return vec3<f32>(0.01, 0.2, 0.3);
-            return vec3<f32>(0.01, 0.01, 0.01);
+            let sun_size = 0.005;
+            let sun_sharpness = 2.0;
+            var sun_spec = dot(dir, l) - 1.0 + sun_size;
+			sun_spec = min(exp(sun_spec * sun_sharpness / sun_size), 1.0);
+			return vec3<f32>(0.02, 0.4, 0.6) + sun_spec;
         }
     }
-    // let reflected = dir - 2.0*dot(dir, normal) * normal;
-    let reflected = reflect(dir, normal);
+    let a = 0.1;
+        
+    let n = calc_normal(p, EPSILON);
+    let v = -dir;
+    let h = normalize(l + v);
 
-    // color
-    let color = (normal + 1.0) / 2.0;
-    
-
-    // // diffuse
-    // let lambert = color / PI;
-
-    // shadow
-    var l = 0.0;
+    var light = 0.0;
+    let in_shadow = shadow(p + n * EPSILON, l);
     if !in_shadow {
-        l = max(0.0, dot(normal,light_dir));
+        light = dot(l, n) * 2.0;
     }
+
+    let f = fresnelSchlick(dot(v, h), vec3<f32>(0.04));
+    // let f = fresnelSchlick(dot(v, n), vec3<f32>(0.04));
     
-    // add specular highlight
-    var s = max(dot(reflected, light_dir), 0.0);
-	s = pow(s, 25.0);
+    let ks = f;
+    let kd = 1.0 - ks;
 
-    // ambient occlusion
-    let o = (1.0-f32(i) / f32(MAX_STEPS)); 
+    let color = (n + 1.0) / 2.0;
+    let lambert = color / PI;
+    let d = distributionGGX(a, n, h);
+    let g = geometrySmith(n, v, l, pow(a+1.0,2.0)/8.0);
 
-    return color * o * (l + 0.1) + (s * l);
-    // return o * vec3<f32>(1.0);
-    // return c;
-    // return c * o;
+    let num = g * d * f;
+    let den = 4.0 * dot(v, n) * dot(l, n);
+
+    let diffuse = kd * color;
+    let specular = num/den;
+
+    return diffuse * max(light, 0.1) + specular * light;
+    // return vec3<f32>(f);
 }
 
 struct VertexIn {
