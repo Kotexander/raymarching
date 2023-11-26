@@ -1,3 +1,5 @@
+// const PI: f32 = 3.14159265358979323846264338327950288;
+
 @group(0) @binding(0)
 var<uniform> camera: mat4x4<f32>;
 
@@ -30,7 +32,7 @@ fn cross_distance(p: vec3<f32>) -> f32 {
     let da = box_distance(p.xyz,vec3(LEN,1.0,1.0));
     let db = box_distance(p.yzx,vec3(1.0,LEN,1.0));
     let dc = box_distance(p.zxy,vec3(1.0,1.0,LEN));
-    return min(da,min(db,dc));
+    return min(da, min(db,dc));
 }
 
 const MENGER_SPONGE_ITERATIONS = 3;
@@ -49,12 +51,12 @@ fn menger_sponge(p: vec3<f32>) -> f32 {
 }
 
 // mandelbrot bulb
-const MAX_STEPS = 100;
-const EPSILON = 0.001;
+// const MAX_STEPS = 100;
+// const EPSILON = 0.001;
 
 // everything else
-// const MAX_STEPS = 500;
-// const EPSILON = 0.00001;
+const MAX_STEPS = 500;
+const EPSILON = 0.00001;
 
 const MAX_DIST = 10.0;
 
@@ -92,8 +94,8 @@ fn de(p: vec3<f32>) -> f32 {
     // return tetrahedron_distance(p);
     // return box_distance(p);
     // return cross_distance(p;
-    return mandelbulb(p);
-    //return menger_sponge(p);
+    // return mandelbulb(p);
+    return menger_sponge(p);
 
 }
 fn calc_normal(p: vec3<f32>, d: f32) -> vec3<f32> {
@@ -139,6 +141,7 @@ fn run(pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
         let dist = de(p);
         
         if dist < EPSILON {
+            // hit
             normal = calc_normal(p, EPSILON);
             in_shadow = shadow(p + normal * EPSILON, light_dir);
             break;
@@ -147,22 +150,37 @@ fn run(pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
         
         // background color
         if depth >= MAX_DIST {
-            return vec3<f32>(0.01, 0.2, 0.3);
-            // return vec3<f32>(0.01, 0.01, 0.01);
+            // return vec3<f32>(0.01, 0.2, 0.3);
+            return vec3<f32>(0.01, 0.01, 0.01);
         }
     }
-    var s: vec3<f32>;
-    if in_shadow {
-        s = vec3<f32>(0.01);
-    }
-    else {
-        s = vec3<f32>(max(0.01, dot(normal,light_dir)));
-    }
+    // let reflected = dir - 2.0*dot(dir, normal) * normal;
+    let reflected = reflect(dir, normal);
+
+    // color
+    let color = (normal + 1.0) / 2.0;
     
 
-    let c = (normal + 1.0) / 2.0;
+    // // diffuse
+    // let lambert = color / PI;
+
+    // shadow
+    var l = 0.0;
+    if !in_shadow {
+        l = max(0.0, dot(normal,light_dir));
+    }
+    
+    // add specular highlight
+    var s = max(dot(reflected, light_dir), 0.0);
+	s = pow(s, 25.0);
+
+    // ambient occlusion
     let o = (1.0-f32(i) / f32(MAX_STEPS)); 
-    return c * o * s;
+
+    return color * o * (l + 0.1) + (s * l);
+    // return o * vec3<f32>(1.0);
+    // return c;
+    // return c * o;
 }
 
 struct VertexIn {
