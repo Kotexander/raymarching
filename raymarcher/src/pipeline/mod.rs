@@ -172,14 +172,88 @@ pub fn texture_bindgroup(
     })
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SettingsUniform {
+    pub max_steps: i32,
+    pub epsilon: f32,
+    pub max_dist: f32,
+
+    pub sun_size: f32,
+    pub sun_dir: [f32; 3],
+    pub sun_sharpness: f32,
+
+    pub alpha: f32,
+
+    pub time: f32,
+
+    pub _padding: [u32; 2],
+}
+
+pub fn settings_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+        label: Some("Settings Bind Group Layout"),
+    })
+}
+pub fn settings_bindgroup(
+    device: &wgpu::Device,
+    settings_bindgroup_layout: &wgpu::BindGroupLayout,
+    settings_uniform: SettingsUniform,
+) -> BindGroup<SettingsUniform> {
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Settings Buffer"),
+        contents: bytemuck::cast_slice(&[settings_uniform]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+    let bindgroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: settings_bindgroup_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: buffer.as_entire_binding(),
+        }],
+        label: Some("Settings Bind Group"),
+    });
+    BindGroup {
+        bindgroup,
+        buffer,
+        phantom: PhantomData,
+    }
+}
+
+pub struct BindGroupLayouts {
+    pub settings: wgpu::BindGroupLayout,
+    pub camera: wgpu::BindGroupLayout,
+    pub texture: wgpu::BindGroupLayout,
+}
+impl BindGroupLayouts {
+    pub fn new(device: &wgpu::Device) -> Self {
+        Self {
+            settings: settings_bindgroup_layout(device),
+            camera: camera_bindgroup_layout(device),
+            texture: texture_bindgroup_layout(device),
+        }
+    }
+}
+
 pub fn raymarcher_pipeline(
     device: &wgpu::Device,
     format: wgpu::TextureFormat,
     camera_bindgroup_layout: &wgpu::BindGroupLayout,
+    settings_bindgroup_layout: &wgpu::BindGroupLayout,
 ) -> wgpu::RenderPipeline {
     let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Raymarcher Pipeline Layout"),
-        bind_group_layouts: &[camera_bindgroup_layout],
+        bind_group_layouts: &[camera_bindgroup_layout, settings_bindgroup_layout],
         push_constant_ranges: &[],
     });
 

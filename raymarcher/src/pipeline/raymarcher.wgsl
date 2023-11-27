@@ -1,15 +1,23 @@
 @group(0) @binding(0)
 var<uniform> camera: mat4x4<f32>;
+@group(1) @binding(0)
+var<uniform> settings: Settings;
 
 const PI: f32 = 3.14159265358979323846264338327950288;
 
+struct Settings {
+  max_steps: i32,
+  epsilon: f32,
+  max_dist: f32,
+  
+  sun_size: f32,
+  sun_dir: vec3<f32>,
+  sun_sharpness: f32,
+  
+  alpha: f32,
 
-const MAX_STEPS = 100;
-// const EPSILON = 0.001;
-
-// const MAX_STEPS = 500;
-const EPSILON = 0.00001;
-const MAX_DIST = 10.0;
+  time: f32,
+}
 
 fn distributionGGX(a: f32, n: vec3<f32>, h: vec3<f32>) -> f32 {
     let a2 = a * a;
@@ -19,13 +27,13 @@ fn distributionGGX(a: f32, n: vec3<f32>, h: vec3<f32>) -> f32 {
     let num = a2;
     var den = ndoth2 * (a2 - 1.0) + 1.0;
     den = PI * den * den;
-    return num / max(den, EPSILON);
+    return num / max(den, settings.epsilon);
 }
 fn geometrySchlickGGX(ndotv: f32, k: f32) -> f32 {
     let num = ndotv;
     let den = ndotv * (1.0 - k) + k;
 	
-    return num / max(den, EPSILON);
+    return num / max(den, settings.epsilon);
 }
 fn geometrySmith(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, k: f32) -> f32 {
     let ndotv = max(dot(n, v), 0.0);
@@ -123,9 +131,15 @@ fn menger_sponge(p: vec3<f32>) -> f32 {
 }
 
 const ITERATIONS = 10;
-const POWER = 8.0;
+// const POWER_MAX = 10.0;
+// const POWER_MIN = 1.0;
+const K = 0.10471975512; // 2pi / 60
+const AMP = 4.5;
+const MID = 5.5;
 fn mandelbulb(pos: vec3<f32>) -> f32 {
-	var z = pos;
+    let power = AMP * sin(K * settings.time) + MID;
+	
+    var z = pos;
 	var dr = 1.0;
 	var r = 0.0;
 	for (var i = 0; i < ITERATIONS ; i++) {
@@ -137,12 +151,12 @@ fn mandelbulb(pos: vec3<f32>) -> f32 {
 		// convert to polar coordinates
 		var theta = acos(z.z/r);
 		var phi = atan2(z.y,z.x);
-		dr = pow(r, POWER - 1.0)*POWER*dr + 1.0;
+		dr = pow(r, power - 1.0)*power*dr + 1.0;
 		
 		// scale and rotate the point
-		var zr = pow(r,POWER);
-		theta = theta*POWER;
-		phi = phi*POWER;
+		var zr = pow(r,power);
+		theta = theta*power;
+		phi = phi*power;
 		
 		// convert back to cartesian coordinates
 		z = zr*vec3<f32>(sin(theta)*cos(phi), sin(phi)*sin(theta), cos(theta));
@@ -156,8 +170,8 @@ fn de(p: vec3<f32>) -> f32 {
     // return tetrahedron_distance(p);
     // return box_distance(p);
     // return cross_distance(p;
-    // return mandelbulb(p);
-    return menger_sponge(p);
+    return mandelbulb(p);
+    // return menger_sponge(p);
 }
 
 fn calc_normal(p: vec3<f32>, d: f32) -> vec3<f32> {
@@ -169,20 +183,20 @@ fn calc_normal(p: vec3<f32>, d: f32) -> vec3<f32> {
 }
 
 fn shadow(pos: vec3<f32>, dir: vec3<f32>) -> bool {
-    var depth = de(pos + dir * EPSILON * 10.0);
+    var depth = de(pos + dir * settings.epsilon * 10.0);
     // var depth = 0.0;
 
-    for (var i = 0; i < MAX_STEPS; i++) {
+    for (var i = 0; i < settings.max_steps; i++) {
         let dist = de(pos + dir * depth);
         depth += abs(dist);
 
         // hit something
-        if dist < EPSILON {
+        if dist < settings.epsilon {
             return true;
         }
 
         // skybox
-        if depth >= MAX_DIST {
+        if depth >= settings.max_dist {
             return false;
         }
     }
@@ -191,66 +205,59 @@ fn shadow(pos: vec3<f32>, dir: vec3<f32>) -> bool {
 }
 
 fn run(pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
-    let l = normalize(vec3<f32>(3.0, 3.0, -3.0));
+    let l = settings.sun_dir;
 
     var depth = 0.0;
     var i = 0;
 
     var p: vec3<f32>;
-    for (; i < MAX_STEPS; i++) {
+    for (; i < settings.max_steps; i++) {
         p = pos + dir * depth;
         let dist = de(p);
         
-        if dist < EPSILON {
+        if dist < settings.epsilon {
             // hit
             break;
         }
         depth += dist;
         
         // background color
-        if depth >= MAX_DIST {
-            let sun_size = 0.005;
-            let sun_sharpness = 2.0;
-            var sun_spec = dot(dir, l) - 1.0 + sun_size;
-			sun_spec = min(exp(sun_spec * sun_sharpness / sun_size), 1.0);
+        if depth >= settings.max_dist {
+            var sun_spec = dot(dir, l) - 1.0 + settings.sun_size;
+			sun_spec = min(exp(sun_spec * settings.sun_sharpness / settings.sun_size), 1.0);
 			return vec3<f32>(0.02, 0.4, 0.6) + sun_spec;
         }
     }
-    let a = 0.1;
         
-    let n = calc_normal(p, EPSILON);
+    let n = calc_normal(p, settings.epsilon);
     let v = -dir;
     let h = normalize(l + v);
 
     var f = fresnelSchlick(dot(v, h), vec3<f32>(0.04));
     var light = 0.0;
-    let in_shadow = shadow(p + n * EPSILON, l);
+    let in_shadow = shadow(p + n * settings.epsilon, l);
     if !in_shadow {
         light = dot(l, n) * 2.0;
     }
     else {
         f = vec3<f32>(0.0);
     }
-
-    // let f = fresnelSchlick(dot(v, n), vec3<f32>(0.04));
     
     let ks = f;
     let kd = 1.0 - ks;
 
     let color = (n + 1.0) / 2.0;
     let lambert = color / PI;
-    let d = distributionGGX(a, n, h);
-    let g = geometrySmith(n, v, l, pow(a+1.0,2.0)/8.0);
+    let d = distributionGGX(settings.alpha, n, h);
+    let g = geometrySmith(n, v, l, pow(settings.alpha+1.0,2.0)/8.0);
 
     let num = g * d * f;
     let den = 4.0 * dot(v, n) * dot(l, n);
 
     let diffuse = kd * color;
-    let specular = num/max(den, EPSILON);
+    let specular = num/max(den, settings.epsilon);
 
     return (diffuse + specular) * max(light, 0.1);
-    // return vec3<f32>(f);
-    // return diffuse;
 }
 
 struct VertexIn {

@@ -30,6 +30,8 @@ fn main() {
     let size = window.inner_size();
     let mut ray_marcher = pollster::block_on(RayMarcher::new(window, size.into(), 1.0 / 1.0));
 
+    let mut dm = (0.0, 0.0);
+
     event_loop.run(move |event, _, control_flow| {
         let window = &ray_marcher.wgpu_ctx.window;
         match event {
@@ -93,13 +95,21 @@ fn main() {
                 event: DeviceEvent::MouseMotion { delta },
                 ..
             } => {
-                if ray_marcher.controller.looking {
-                    let sensativity = 0.1;
-                    ray_marcher.camera.yaw += delta.0 as f32 * sensativity * dt;
-                    ray_marcher.camera.pitch += delta.1 as f32 * sensativity * dt;
-                }
+                dm.0 += delta.0;
+                dm.1 += delta.1;
             }
             Event::RedrawRequested(window_id) if window_id == window.id() => {
+                if ray_marcher.controller.looking {
+                    let sensativity = 0.005;
+                    let v = ray_marcher.camera.rot.transform_vector(
+                        &(raymarcher::na::Vector3::new(dm.1 as f32, dm.0 as f32, 0.0)
+                            * sensativity),
+                    );
+                    ray_marcher.camera.rot = ray_marcher.camera.rot.append_axisangle_linearized(&v);
+                    // log::info!("{}", ray_marcher.camera.rot.angle());
+                }
+                dm.0 = 0.0;
+                dm.1 = 0.0;
                 ray_marcher.update(dt);
                 match ray_marcher.render() {
                     Ok(_) => {}

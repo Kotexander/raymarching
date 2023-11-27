@@ -86,8 +86,10 @@ impl App {
     fn gyro(&mut self, gyro: [f32; 3]) {
         if let Some(rm) = &mut self.ray_marcher {
             if self.pointer.is_none() {
-                rm.camera.pitch -= gyro[0] * GYRO_PERIOD;
-                rm.camera.yaw -= gyro[1] * GYRO_PERIOD;
+                let v = rm.camera.rot.transform_vector(
+                    &(raymarcher::na::Vector3::new(-gyro[0], -gyro[1], gyro[2]) * GYRO_PERIOD),
+                );
+                rm.camera.rot = rm.camera.rot.append_axisangle_linearized(&v);
             }
         } else {
             log::error!("Attempted gyro action when no window exists!");
@@ -97,9 +99,16 @@ impl App {
         if let Some(rm) = &mut self.ray_marcher {
             if let Some(pointer) = &mut self.pointer {
                 let sensativity = 0.001;
-                let d = (pointer.pre - pointer.now) * sensativity;
-                rm.camera.pitch += d.y;
-                rm.camera.yaw += d.x;
+                let d = pointer.pre - pointer.now;
+                // rm.camera.pitch += d.y;
+                // rm.camera.yaw += d.x;
+
+                let v = rm
+                    .camera
+                    .rot
+                    .transform_vector(&(raymarcher::na::Vector3::new(d.y, d.x, 0.0) * sensativity));
+                rm.camera.rot = rm.camera.rot.append_axisangle_linearized(&v);
+
                 pointer.update();
             } else {
                 if self.num_pointers == 2 || self.num_pointers == 3 {

@@ -8,8 +8,7 @@ use wgpu_context::WgpuContext;
 pub struct Camera {
     pub pos: na::Point3<f32>,
     pub fov: f32,
-    pub yaw: f32,
-    pub pitch: f32,
+    pub rot: na::UnitQuaternion<f32>,
 }
 impl Camera {
     fn uniform(&self, aspect: f32) -> pipeline::CameraUniform {
@@ -20,7 +19,7 @@ impl Camera {
         pipeline::CameraUniform { matrix: mat.into() }
     }
     pub fn rotation(&self) -> na::Rotation3<f32> {
-        na::Rotation3::from_euler_angles(self.pitch, self.yaw, 0.0)
+        self.rot.to_rotation_matrix()
     }
 }
 
@@ -86,14 +85,19 @@ where
 
     pub scale: f32,
 
+    time: f32,
+
+    bindgroup_layouts: pipeline::BindGroupLayouts,
+
     raymarcher_pipeline: wgpu::RenderPipeline,
     camera_bindgroup: pipeline::BindGroup<pipeline::CameraUniform>,
+    settings: pipeline::SettingsUniform,
+    settings_bindgroup: pipeline::BindGroup<pipeline::SettingsUniform>,
     mesh: pipeline::Mesh<pipeline::Vertex>,
 
     fullscreen_pipeline: wgpu::RenderPipeline,
     texture_bindgroup: wgpu::BindGroup,
     texture_view: wgpu::TextureView,
-    texture_bindgroup_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 }
 impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
@@ -102,23 +106,35 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
         let camera = Camera {
             pos: na::point![0.0, 0.0, -3.0],
             fov: std::f32::consts::FRAC_PI_3,
-            yaw: 0.0,
-            pitch: 0.0,
+            rot: na::UnitQuaternion::default(),
         };
 
-        let camera_bindgroup_layout = pipeline::camera_bindgroup_layout(&wgpu_ctx.device);
-        let texture_bindgroup_layout = pipeline::texture_bindgroup_layout(&wgpu_ctx.device);
+        let bindgroup_layouts = pipeline::BindGroupLayouts::new(&wgpu_ctx.device);
 
         let aspect = size.0 as f32 / size.1 as f32;
         let camera_bindgroup = pipeline::camera_bindgroup(
             &wgpu_ctx.device,
-            &camera_bindgroup_layout,
+            &bindgroup_layouts.camera,
             camera.uniform(aspect),
         );
+        let settings = pipeline::SettingsUniform {
+            max_steps: 100,
+            epsilon: 0.001,
+            max_dist: 10.0,
+            sun_size: 0.005,
+            sun_dir: na::Vector3::new(3.0, 3.0, -3.0).normalize().into(),
+            sun_sharpness: 2.0,
+            alpha: 0.1,
+            time: 0.0,
+            _padding: [0; 2],
+        };
+        let settings_bindgroup =
+            pipeline::settings_bindgroup(&wgpu_ctx.device, &bindgroup_layouts.settings, settings);
         let raymarcher_pipeline = pipeline::raymarcher_pipeline(
             &wgpu_ctx.device,
             wgpu_ctx.config.format,
-            &camera_bindgroup_layout,
+            &bindgroup_layouts.camera,
+            &bindgroup_layouts.settings,
         );
         let mesh = pipeline::new_fullscreen_quad(&wgpu_ctx.device);
 
@@ -127,7 +143,7 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
         let fullscreen_pipeline = pipeline::fullscreen_pipeline(
             &wgpu_ctx.device,
             wgpu_ctx.config.format,
-            &texture_bindgroup_layout,
+            &bindgroup_layouts.texture,
         );
 
         let address_mode = wgpu::AddressMode::ClampToEdge;
@@ -145,7 +161,7 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
 
         let (texture_bindgroup, texture_view) = scaled_texture_bindgroup_and_view(
             &wgpu_ctx.device,
-            &texture_bindgroup_layout,
+            &bindgroup_layouts.texture,
             &sampler,
             wgpu_ctx.config.format,
             size,
@@ -160,11 +176,14 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
             mesh,
             controller,
             scale,
+            bindgroup_layouts,
             fullscreen_pipeline,
             texture_bindgroup,
             texture_view,
-            texture_bindgroup_layout,
             sampler,
+            settings,
+            settings_bindgroup,
+            time: 0.0,
         }
     }
     pub fn update(&mut self, dt: f32) {
@@ -197,6 +216,8 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
                 .transform_vector(&dir);
             self.camera.pos += dir * speed * dt;
         }
+
+        self.settings.time += dt;
     }
     fn aspect(&self) -> f32 {
         self.wgpu_ctx.config.width as f32 / self.wgpu_ctx.config.height as f32
@@ -205,6 +226,8 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
     fn update_graphics(&self) {
         self.camera_bindgroup
             .update(&self.wgpu_ctx.queue, self.camera.uniform(self.aspect()));
+        self.settings_bindgroup
+            .update(&self.wgpu_ctx.queue, self.settings);
     }
     pub fn render(&self) -> Result<(), wgpu::SurfaceError> {
         self.update_graphics();
@@ -250,6 +273,7 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
 
             render_pass.set_pipeline(&self.raymarcher_pipeline);
             render_pass.set_bind_group(0, &self.camera_bindgroup.bindgroup, &[]);
+            render_pass.set_bind_group(1, &self.settings_bindgroup.bindgroup, &[]);
             self.mesh.draw(&mut render_pass);
         }
         {
@@ -294,7 +318,7 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> RayMarcher<W> {
 
         let (texture_bindgroup, texture_view) = scaled_texture_bindgroup_and_view(
             &self.wgpu_ctx.device,
-            &self.texture_bindgroup_layout,
+            &self.bindgroup_layouts.texture,
             &self.sampler,
             self.wgpu_ctx.config.format,
             new_size,
