@@ -17,6 +17,7 @@ struct Settings {
   alpha: f32,
 
   time: f32,
+  scene: u32
 }
 
 fn distributionGGX(a: f32, n: vec3<f32>, h: vec3<f32>) -> f32 {
@@ -107,17 +108,16 @@ fn cross_distance(p: vec3<f32>) -> f32 {
     return min(da, min(db,dc));
 }
 
+const K = 0.05235987755; // 2pi / 120
+
 const MENGER_SPONGE_ITERATIONS = 5;
 fn menger_sponge(p: vec3<f32>) -> f32 {
-    let a = PI/f32(MENGER_SPONGE_ITERATIONS);
-    let rx = rotateX(a);
-    let ry = rotateZ(a);
-    let rz = rotateY(a);
     var pr = p;
 
     var d = box_distance(p,vec3(1.0));
     var s = 1.0;
     for(var m = 0; m < MENGER_SPONGE_ITERATIONS; m++){
+
         let a = real_mod_vec3f32(pr * s, 2.0) - 1.0;
         s *= 3.0;
         let r = 1.0 - 3.0*abs(a);
@@ -125,17 +125,19 @@ fn menger_sponge(p: vec3<f32>) -> f32 {
         let c = cross_distance(r)/s;
         d = max(d,c);
 
-        pr = pr*rx*ry*rz;
+        // let ra = sin(K * settings.time);
+        // let rx = rotateX(ra);
+        // let ry = rotateZ(ra);
+        // let rz = rotateY(ra);
+        // pr = pr*rx*ry*rz;
+        pr += 0.1 * s;
     }
     return d;
 }
 
-const ITERATIONS = 10;
-// const POWER_MAX = 10.0;
-// const POWER_MIN = 1.0;
-const K = 0.10471975512; // 2pi / 60
 const AMP = 4.5;
 const MID = 5.5;
+const ITERATIONS = 15;
 fn mandelbulb(pos: vec3<f32>) -> f32 {
     let power = AMP * sin(K * settings.time) + MID;
 	
@@ -166,12 +168,17 @@ fn mandelbulb(pos: vec3<f32>) -> f32 {
 }
 
 fn de(p: vec3<f32>) -> f32 {
-    // return sphere_distance(p);
-    // return tetrahedron_distance(p);
-    // return box_distance(p);
-    // return cross_distance(p;
-    return mandelbulb(p);
-    // return menger_sponge(p);
+    switch settings.scene {
+        case 0u {
+            return mandelbulb(p);
+        }
+        case 1u {
+            return menger_sponge(p);
+        }
+        default {
+            return sphere_distance(p);
+        }
+    }
 }
 
 fn calc_normal(p: vec3<f32>, d: f32) -> vec3<f32> {

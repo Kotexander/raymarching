@@ -53,6 +53,7 @@ struct App {
     ray_marcher: Option<RayMarcher<AndroidWindow>>,
     pointer: Option<Pointer>,
     num_pointers: usize,
+    last_touch: Option<f32>,
 }
 impl App {
     fn new() -> Self {
@@ -60,6 +61,7 @@ impl App {
             ray_marcher: None,
             pointer: None,
             num_pointers: 0,
+            last_touch: None,
         }
     }
     fn init_window(&mut self, native_window: ndk::native_window::NativeWindow) {
@@ -100,8 +102,6 @@ impl App {
             if let Some(pointer) = &mut self.pointer {
                 let sensativity = 0.001;
                 let d = pointer.pre - pointer.now;
-                // rm.camera.pitch += d.y;
-                // rm.camera.yaw += d.x;
 
                 let v = rm
                     .camera
@@ -132,9 +132,12 @@ impl App {
         } else {
             log::error!("Attempted unpdate when to window exists!");
         }
+        if let Some(last_touch) = &mut self.last_touch {
+            *last_touch += dt;
+        }
     }
-    fn render(&self) {
-        if let Some(rm) = &self.ray_marcher {
+    fn render(&mut self) {
+        if let Some(rm) = &mut self.ray_marcher {
             match rm.render() {
                 Ok(_) => {}
                 // Reconfigure the surface if lost
@@ -260,6 +263,24 @@ fn android_main(app: AndroidApp) {
                                         let pos = raymarcher::na::Point2::new(p.x(), p.y());
                                         match action {
                                             MotionAction::Down | MotionAction::PointerDown => {
+                                                if let Some(last_touch) = &rm_app.last_touch {
+                                                    if *last_touch
+                                                        <= std::time::Duration::from_millis(250)
+                                                            .as_secs_f32()
+                                                    {
+                                                        if let Some(rm) = &mut rm_app.ray_marcher {
+                                                            rm.switch_scene();
+                                                        }
+                                                        else {
+                                                            log::error!("Trying to switch scene when no window exists!");
+                                                        }
+                                                    }
+                                                    else {
+                                                        rm_app.last_touch = Some(0.0);
+                                                    }
+                                                } else {
+                                                    rm_app.last_touch = Some(0.0);
+                                                }
                                                 rm_app.pointer =
                                                     Some(Pointer::new(p.pointer_id(), pos));
                                             }
@@ -280,6 +301,7 @@ fn android_main(app: AndroidApp) {
                                         }
                                     } else {
                                         rm_app.pointer = None;
+                                        rm_app.last_touch = None;
                                     }
                                 }
                             }

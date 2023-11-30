@@ -14,6 +14,7 @@ const W: u32 = 17;
 const A: u32 = 30;
 const S: u32 = 31;
 const D: u32 = 32;
+const SPACE: u32 = 57;
 
 fn main() {
     env_logger::init();
@@ -69,6 +70,11 @@ fn main() {
                         }
                         E => {
                             ray_marcher.controller.down = state;
+                        }
+                        SPACE => {
+                            if !state {
+                                ray_marcher.switch_scene();
+                            }
                         }
                         _ => {}
                     }

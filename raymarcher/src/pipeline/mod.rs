@@ -186,8 +186,46 @@ pub struct SettingsUniform {
     pub alpha: f32,
 
     pub time: f32,
+    pub scene: u32,
 
-    pub _padding: [u32; 2],
+    pub _padding: u32,
+}
+impl SettingsUniform {
+    pub fn set_mandelbulb(mut self) -> Self {
+        self.scene = 0;
+        self.max_steps = 100;
+        self.epsilon = 0.002;
+        self
+    }
+    pub fn set_mengersponge(mut self) -> Self {
+        self.scene = 1;
+        self.max_steps = 500;
+        self.epsilon = 0.0001;
+        self
+    }
+    pub fn set_mandelbulb_mut(&mut self) {
+        *self = self.set_mandelbulb();
+    }
+    pub fn set_mengersponge_mut(&mut self) {
+        *self = self.set_mengersponge();
+    }
+}
+impl Default for SettingsUniform {
+    fn default() -> Self {
+        Self {
+            max_steps: 00,
+            epsilon: 0.000,
+            max_dist: 10.0,
+            sun_size: 0.005,
+            sun_dir: [0.0, 1.0, 0.0],
+            sun_sharpness: 2.0,
+            alpha: 0.1,
+            time: 0.0,
+            scene: 0,
+            _padding: 0,
+        }
+        .set_mandelbulb()
+    }
 }
 
 pub fn settings_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
@@ -227,21 +265,6 @@ pub fn settings_bindgroup(
         bindgroup,
         buffer,
         phantom: PhantomData,
-    }
-}
-
-pub struct BindGroupLayouts {
-    pub settings: wgpu::BindGroupLayout,
-    pub camera: wgpu::BindGroupLayout,
-    pub texture: wgpu::BindGroupLayout,
-}
-impl BindGroupLayouts {
-    pub fn new(device: &wgpu::Device) -> Self {
-        Self {
-            settings: settings_bindgroup_layout(device),
-            camera: camera_bindgroup_layout(device),
-            texture: texture_bindgroup_layout(device),
-        }
     }
 }
 
